@@ -1,7 +1,7 @@
 #!/bin/bash
 # Debian Server Setup Script
-# Creates user 'tenzo' with sudo access, sets India timezone, configures SSH
-# Run with: curl -s https://raw.githubusercontent.com/tenzo-dev/debian-setup/main/setup.sh | sudo bash
+# Creates user 'tenzo' with sudo access, sets India timezone, prompts for password
+# Run with: curl -s https://raw.githubusercontent.com/yourusername/yourrepo/main/setup.sh | sudo bash
 
 set -euo pipefail
 
@@ -9,7 +9,6 @@ set -euo pipefail
 USERNAME="tenzo"
 TIMEZONE="Asia/Kolkata"
 SSH_PORT="22"
-DEFAULT_PASSWORD="TempPass123!"  # Temporary password - user MUST change it
 
 # Colors for output
 RED='\033[0;31m'
@@ -63,20 +62,41 @@ echo "$TIMEZONE" > /etc/timezone
 dpkg-reconfigure -f noninteractive tzdata
 log "Timezone set to $(timedatectl | grep "Time zone")"
 
-# 3. Create user 'tenzo' and add to sudo group
+# 3. Create user 'tenzo' and prompt for password
 if id "$USERNAME" &>/dev/null; then
     warning "User $USERNAME already exists. Skipping user creation."
 else
     log "Creating user $USERNAME..."
     useradd -m -s /bin/bash "$USERNAME"
     
-    log "Setting default password for $USERNAME..."
-    echo "$USERNAME:$DEFAULT_PASSWORD" | chpasswd
+    # Prompt for password securely
+    while true; do
+        echo -e "${BLUE}Please enter a password for user '$USERNAME':${NC}"
+        read -s -p "Password: " password1
+        echo
+        read -s -p "Confirm password: " password2
+        echo
+        
+        if [ "$password1" != "$password2" ]; then
+            error "Passwords do not match. Please try again."
+            continue
+        fi
+        
+        if [ -z "$password1" ]; then
+            error "Password cannot be empty. Please try again."
+            continue
+        fi
+        
+        # Set the password
+        echo "$USERNAME:$password1" | chpasswd
+        log "Password set successfully for user $USERNAME."
+        break
+    done
     
     log "Adding $USERNAME to sudo group..."
     usermod -aG sudo "$USERNAME"
     
-    # Create .ssh directory for SSH keys
+    # Create .ssh directory
     mkdir -p "/home/$USERNAME/.ssh"
     chmod 700 "/home/$USERNAME/.ssh"
     chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.ssh"
@@ -91,16 +111,24 @@ SSH_CONFIG="/etc/ssh/sshd_config"
 # Backup original config
 cp "$SSH_CONFIG" "$SSH_CONFIG.bak"
 
-# Ensure password authentication is enabled
-sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' "$SSH_CONFIG"
-sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' "$SSH_CONFIG"
-sed -i 's/^#\?Port.*/Port '"$SSH_PORT"'/' "$SSH_CONFIG"
+# Configure SSH settings
+cat > /etc/ssh/sshd_config.d/custom.conf << EOF
+# Custom SSH configuration for tenzo user
+Port $SSH_PORT
+PermitRootLogin no
+PasswordAuthentication yes
+ChallengeResponseAuthentication no
+UsePAM yes
+X11Forwarding no
+PrintMotd no
+AcceptEnv LANG LC_*
+Subsystem sftp /usr/lib/openssh/sftp-server
 
-# Allow all IPs (remove any AllowUsers or DenyUsers restrictions)
-sed -i '/^\s*AllowUsers/d' "$SSH_CONFIG"
-sed -i '/^\s*DenyUsers/d' "$SSH_CONFIG"
+# Allow password authentication
+PasswordAuthentication yes
+EOF
 
-# 5. Configure firewall (UFW)
+# 5. Configure firewall (UFW) - allow all IPs on SSH port 22
 log "Configuring firewall (UFW)..."
 ufw --force reset
 
@@ -158,29 +186,16 @@ apt clean
 log "Restarting SSH service..."
 systemctl restart sshd
 
-# 10. Generate random password if default was used
-GENERATED_PASSWORD=""
-if grep -q "$DEFAULT_PASSWORD" /etc/shadow; then
-    GENERATED_PASSWORD=$(openssl rand -base64 12)
-    echo "$USERNAME:$GENERATED_PASSWORD" | chpasswd
-    warning "DEFAULT PASSWORD DETECTED! Generated new secure password."
-fi
-
-# 11. Display important information
+# 10. Display important information
 SERVER_IP=$(hostname -I | awk '{print $1}')
 
 cat << EOF
 
 ${GREEN}=== SETUP COMPLETE ===${NC}
 
-${YELLOW}🔑 IMPORTANT SECURITY INFORMATION${NC}
-${RED}⚠️  DEFAULT SSH ACCESS FROM ALL IPs - THIS IS INSECURE FOR PRODUCTION ⚠️${NC}
-
 ${BLUE}User Account:${NC}
 - Username: ${GREEN}$USERNAME${NC}
-- Password: ${RED}${GENERATED_PASSWORD:-$DEFAULT_PASSWORD}${NC}
-- ${YELLOW}You MUST change this password immediately after login:${NC}
-  ${GREEN}passwd${NC}
+- Sudo access: ${GREEN}Enabled${NC}
 
 ${BLUE}Server Details:${NC}
 - IP Address: ${GREEN}$SERVER_IP${NC}
@@ -189,14 +204,13 @@ ${BLUE}Server Details:${NC}
 - Connect command: ${GREEN}ssh -p $SSH_PORT $USERNAME@$SERVER_IP${NC}
 
 ${YELLOW}🛡️  SECURITY RECOMMENDATIONS${NC}
-1. ${RED}Change the password immediately${NC} after first login
-2. ${RED}Restrict SSH access${NC} to your IP only:
+1. ${RED}This server allows SSH access from ALL IPs${NC} - consider restricting to your IP only:
    ${GREEN}sudo ufw delete allow $SSH_PORT/tcp${NC}
    ${GREEN}sudo ufw allow from YOUR_IP_ADDRESS to any port $SSH_PORT${NC}
-3. ${RED}Disable password authentication${NC} and use SSH keys only:
+2. ${RED}Disable password authentication${NC} after setting up SSH keys:
    ${GREEN}sudo sed -i 's/PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config${NC}
    ${GREEN}sudo systemctl restart sshd${NC}
-4. ${RED}Enable 2FA${NC} for SSH access
+3. ${RED}Enable 2FA${NC} for SSH access
 
 ${YELLOW}✅ Verification Commands:${NC}
 - Check sudo access: ${GREEN}sudo -l -U $USERNAME${NC}
@@ -206,13 +220,5 @@ ${YELLOW}✅ Verification Commands:${NC}
 
 ${GREEN}Setup completed successfully at $(date)${NC}
 EOF
-
-# Force password change on first login
-log "Forcing password change on first login for $USERNAME..."
-chage -d 0 "$USERNAME"
-
-# Final warning about security
-warning "This server is configured with SSH access from ALL IPs on port 22."
-warning "This is highly insecure for production environments. Please follow the security recommendations above immediately."
 
 exit 0

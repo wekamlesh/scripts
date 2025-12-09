@@ -80,6 +80,17 @@ AcceptEnv LANG LC_*
 Subsystem sftp /usr/lib/openssh/sftp-server
 EOF
 
+
+# Add SSH public key
+mkdir -p "/home/$USERNAME/.ssh"
+cat > "/home/$USERNAME/.ssh/authorized_keys" << 'EOF'
+ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAr99k2aRJ5juB4TiKZcmMKsmZInfPOwRQSLzGhsB0cz merugukamlesh@gmail.com
+EOF
+
+chmod 700 "/home/$USERNAME/.ssh"
+chmod 600 "/home/$USERNAME/.ssh/authorized_keys"
+chown -R "$USERNAME:$USERNAME" "/home/$USERNAME/.ssh"
+
 # 4. Configure firewall (UFW)
 log "Configuring firewall (UFW)..."
 ufw --force reset

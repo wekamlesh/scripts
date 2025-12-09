@@ -1,6 +1,6 @@
 #!/bin/bash
 # Debian Server Setup Script
-# Creates user 'tenzo' with sudo access, sets India timezone, prompts for password
+# Creates or updates user 'tenzo' with sudo access, sets India timezone, prompts for password
 # Run with: curl -s https://raw.githubusercontent.com/wekamlesh/scripts/main/setup.sh | sudo bash
 
 set -euo pipefail
@@ -62,21 +62,13 @@ log "Setting timezone to $TIMEZONE..."
 timedatectl set-timezone "$TIMEZONE"
 log "Timezone set to $(timedatectl | grep "Time zone")"
 
-# 3. Create user 'tenzo' and prompt for password
-if id "$USERNAME" &>/dev/null; then
-    warning "User $USERNAME already exists. Skipping user creation."
-    # Still ensure they're in sudo group
-    if ! groups "$USERNAME" | grep -q '\bsudo\b'; then
-        log "Adding existing user $USERNAME to sudo group..."
-        usermod -aG sudo "$USERNAME"
-    fi
-else
-    log "Creating user $USERNAME..."
-    useradd -m -s /bin/bash "$USERNAME"
+# 3. Create or update user 'tenzo' and set/reset password
+function set_user_password() {
+    local username="$1"
+    local action="$2" # "create" or "reset"
     
-    # Prompt for password securely
     while true; do
-        echo -e "\n${BLUE}🔐 Please set a password for user '$USERNAME':${NC}"
+        echo -e "\n${BLUE}🔐 ${action^} password for user '$username':${NC}"
         echo -e "${YELLOW}Note: Password will not be visible while typing${NC}"
         
         # Read password without echo
@@ -104,11 +96,29 @@ else
         fi
         
         # Set the password
-        echo "$USERNAME:$password1" | chpasswd
+        echo "$username:$password1" | chpasswd
         unset password1 password2  # Clear passwords from memory
-        log "✅ Password set successfully for user $USERNAME."
+        log "✅ Password ${action} successfully for user $username."
         break
     done
+}
+
+if id "$USERNAME" &>/dev/null; then
+    log "User $USERNAME already exists. Resetting password..."
+    set_user_password "$USERNAME" "reset"
+    
+    # Ensure user is in sudo group
+    if ! groups "$USERNAME" | grep -q '\bsudo\b'; then
+        log "Adding existing user $USERNAME to sudo group..."
+        usermod -aG sudo "$USERNAME"
+        log "✅ User $USERNAME added to sudo group."
+    else
+        log "✅ User $USERNAME is already in sudo group."
+    fi
+else
+    log "Creating user $USERNAME..."
+    useradd -m -s /bin/bash "$USERNAME"
+    set_user_password "$USERNAME" "create"
     
     log "Adding $USERNAME to sudo group..."
     usermod -aG sudo "$USERNAME"
@@ -222,6 +232,7 @@ ${BLUE}👤 User Account:${NC}
 - Username: ${GREEN}$USERNAME${NC}
 - Sudo Access: ${GREEN}✅ Enabled${NC}
 - Home Directory: ${GREEN}/home/$USERNAME${NC}
+- Password Status: ${GREEN}✅ ${$(id "$USERNAME" &>/dev/null && echo "Reset" || echo "Created")}${NC}
 
 ${BLUE}🔌 SSH Access:${NC}
 - Port: ${GREEN}$SSH_PORT${NC}

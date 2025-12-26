@@ -1,6 +1,14 @@
 #!/bin/bash
-# Simple Debian Server Setup (No colors, no extras)
-# Updates system, installs essentials, configures UFW & fail2ban, sets timezone
+# Simple Debian Server Setup Script (SAFE / Debian-only)
+# - Updates system
+# - Installs essentials (sudo, ufw, fail2ban, unattended-upgrades, etc.)
+# - Sets timezone to Asia/Kolkata
+# - Enables UFW (allows SSH/HTTP/HTTPS)
+# - Enables fail2ban (basic SSH jail)
+# - Enables unattended upgrades
+#
+# Run with:
+# curl -fsSL https://raw.githubusercontent.com/wekamlesh/scripts/main/setup.sh | sudo bash
 
 set -euo pipefail
 

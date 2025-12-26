@@ -1,4 +1,4 @@
-!/bin/bash
+#!/bin/bash
 # Simple Debian Server Setup Script (SAFE / Debian-only)
 # - Updates system
 # - Installs essentials (sudo, ufw, fail2ban, unattended-upgrades, etc.)

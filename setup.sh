@@ -5,6 +5,7 @@
 # - set timezone
 # - install and enable Fail2Ban
 # - enable unattended upgrades
+# - curl -fsSL https://raw.githubusercontent.com/wekamlesh/scripts/main/setup.sh | sudo bash
 
 set -euo pipefail
 
